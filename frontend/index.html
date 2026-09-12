@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presenton Automation - Presentation Generator</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <a href="#" class="brand">
+      <div class="brand-icon">P</div>
+      <div class="brand-title">Presenton Automation</div>
+      <span class="brand-badge">PRO ENGINE</span>
+    </a>
+    
+    <div class="header-actions">
+      <div class="badge-pill">
+        <span class="dot-indicator"></span>
+        <span id="api-status">Engine Active: Port 5001</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="app-container">
+
+    <!-- Hero Section -->
+    <section class="hero-section">
+      <h1 class="hero-title">Automate Presentation Slide Generation</h1>
+      <p class="hero-subtitle">Transform instructions into 16:9 widescreen PowerPoint presentations via Direct API, n8n Workflows, or MCP Tools.</p>
+    </section>
+
+    <!-- Generator Panel -->
+    <section class="generator-card">
+      <div class="prompt-group">
+        <label class="label-title" for="promptInput">Presentation Prompt & Instructions</label>
+        <div class="prompt-input-wrapper">
+          <textarea id="promptInput" class="prompt-textarea" placeholder="e.g. AI in Healthcare - Clinical Diagnostics & Machine Learning Applications"></textarea>
+        </div>
+        
+        <!-- Preset Prompt Pills -->
+        <div class="preset-pills">
+          <button class="btn-pill" onclick="setPreset('AI in Modern Healthcare - Diagnostics & Patient Care')">🏥 AI Healthcare</button>
+          <button class="btn-pill" onclick="setPreset('SaaS Startup Pitch Deck - Seed Round')">🚀 Startup Pitch</button>
+          <button class="btn-pill" onclick="setPreset('Quarterly Marketing Growth Strategy')">📈 Growth Strategy</button>
+          <button class="btn-pill" onclick="setPreset('Keynote: The Future of Cloud Architecture')">☁️ Cloud Architecture</button>
+          <button class="btn-pill" onclick="setPreset('Cybersecurity Zero Trust Framework Implementation')">🛡️ Cybersecurity</button>
+        </div>
+      </div>
+
+      <!-- Controls Grid -->
+      <div class="controls-grid">
+        <div class="control-box">
+          <label class="label-title" for="themeSelect">Design Theme</label>
+          <select id="themeSelect" class="select-input" onchange="onThemeChange()">
+            <option value="modern_dark">Modern Dark (Deep Navy & Cyan)</option>
+            <option value="vibrant_neon">Vibrant Neon (Violet & Pink)</option>
+            <option value="executive_navy">Executive Navy (Slate & Amber Gold)</option>
+            <option value="minimal_clean">Minimalist Clean (Off-White & Charcoal)</option>
+            <option value="emerald_bio">Emerald Bio (Forest Green & Mint)</option>
+          </select>
+        </div>
+
+        <div class="control-box">
+          <label class="label-title" for="slidesRange">Slide Count</label>
+          <div class="range-wrapper">
+            <input type="range" id="slidesRange" class="range-input" min="3" max="10" value="5" oninput="updateSlideRangeVal(this.value)">
+            <span id="rangeVal" class="range-val">5 Slides</span>
+          </div>
+        </div>
+
+        <div class="control-box">
+          <label class="label-title">Engine Mode</label>
+          <div class="engine-toggle">
+            <div id="modeDirect" class="toggle-option active" onclick="setEngineMode('direct')">Direct Backend</div>
+            <div id="modeN8n" class="toggle-option" onclick="setEngineMode('n8n')">n8n Webhook</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Bar -->
+      <div class="action-bar">
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <span style="font-size: 13px; color: var(--text-muted);">Output Format:</span>
+          <span style="font-size: 13px; font-weight: 700; color: var(--primary);">Native PowerPoint (.pptx)</span>
+        </div>
+
+        <button id="btnGenerate" class="btn-generate" onclick="generatePresentation()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+          Generate Presentation
+        </button>
+      </div>
+    </section>
+
+    <!-- Workspace Preview Grid -->
+    <section class="workspace-grid">
+      
+      <!-- Slide Thumbnails Sidebar -->
+      <aside class="slides-sidebar">
+        <div class="sidebar-title">Slide Deck Structure</div>
+        <div id="thumbList" class="thumb-list">
+          <div class="thumb-item active">
+            <div class="thumb-header">
+              <span class="thumb-num">Slide 1</span>
+              <span class="thumb-type">Cover</span>
+            </div>
+            <div class="thumb-text">Title Cover Slide</div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Stage Preview Area -->
+      <main class="preview-stage">
+        <div class="stage-header">
+          <div id="deckTitle" class="stage-title">Presentation Title Preview</div>
+          
+          <div class="export-group">
+            <button class="btn-secondary" onclick="showJsonModal()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 2 0 0 0-2 2v16a2 2 2 0 0 0 2 2h12a2 2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              View JSON
+            </button>
+            <button class="btn-secondary" onclick="showMcpModal()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
+              Copy MCP Command
+            </button>
+            <button id="btnDownload" class="btn-success" onclick="downloadPptx()" disabled>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download PPTX
+            </button>
+          </div>
+        </div>
+
+        <!-- 16:9 Canvas Frame -->
+        <div id="canvasFrame" class="canvas-frame">
+          
+          <!-- Loading Overlay -->
+          <div id="loadingOverlay" class="loading-overlay">
+            <div class="spinner"></div>
+            <div style="font-weight: 700; color: var(--primary);">Generating Widescreen Presentation...</div>
+            <div style="font-size: 13px; color: var(--text-muted);">Structuring slides, layout cards, and rendering PPTX deck</div>
+          </div>
+
+          <!-- Dynamic Slide Content Container -->
+          <div id="slideContent" class="slide-content-wrapper">
+            <!-- Rendered dynamically by app.js -->
+          </div>
+        </div>
+      </main>
+
+    </section>
+  </main>
+
+  <!-- Modal for JSON / MCP -->
+  <div id="modalBackdrop" class="modal-backdrop" onclick="closeModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3 id="modalTitle" style="font-family: var(--font-heading); color: var(--text-main);">Presentation Data</h3>
+        <button class="btn-secondary" onclick="closeModalDirect()">✕ Close</button>
+      </div>
+      <pre id="modalCode" class="modal-code"></pre>
+      <button class="btn-secondary" onclick="copyModalCode()">📋 Copy to Clipboard</button>
+    </div>
+  </div>
+
+  <!-- App JavaScript -->
+  <script src="app.js"></script>
+</body>
+</html>

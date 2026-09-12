@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "presenton-presentation-automation": {
+      "command": "node",
+      "args": [
+        "/Users/kt/workspace/presenton-automation/mcp-server/dist/index.js"
+      ],
+      "env": {
+        "BACKEND_API_BASE": "http://localhost:5001"
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "presenton-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Presentation Automation Suite Root",
+  "scripts": {
+    "start": "bash start.sh",
+    "dev": "bash start.sh"
+  }
+}
