@@ -50,15 +50,23 @@ app.get("/api/themes", (req, res) => {
 // Primary Endpoint: Generate Presentation from Prompt Instructions
 app.post("/api/generate", async (req, res) => {
   try {
-    const { prompt, theme = "modern_dark", numSlides = 5 } = req.body;
+    const { prompt, theme = "modern_dark", numSlides = 5, mode, provider, apiKey, model } = req.body;
     if (!prompt) {
       return res.status(400).json({ error: "Prompt instruction is required." });
     }
 
-    console.log(`[Generate] Prompt: "${prompt}", Theme: ${theme}, Slides: ${numSlides}`);
+    const headerApiKey = req.headers["x-api-key"] || req.headers["authorization"]?.replace("Bearer ", "");
+    const options = {
+      mode,
+      provider,
+      apiKey: apiKey || headerApiKey,
+      model
+    };
+
+    console.log(`[Generate] Prompt: "${prompt}", Theme: ${theme}, Slides: ${numSlides}, Mode: ${mode || "auto"}, Provider: ${provider || "auto"}`);
 
     // 1. Generate Structured Slide Deck Plan
-    const presentationPlan = await generatePresentationPlan(prompt, theme, numSlides);
+    const presentationPlan = await generatePresentationPlan(prompt, theme, numSlides, options);
 
     // 2. Render PPTX File
     const { filename, filePath } = await buildPptxFile(presentationPlan, OUTPUT_DIR);
@@ -75,6 +83,12 @@ app.post("/api/generate", async (req, res) => {
       summary: presentationPlan.summary,
       theme: getTheme(theme),
       slideCount: presentationPlan.slideCount,
+      generatorMeta: {
+        modeUsed: presentationPlan.modeUsed,
+        provider: presentationPlan.provider,
+        fallbackUsed: presentationPlan.fallbackUsed,
+        fallbackReason: presentationPlan.fallbackReason || null
+      },
       presentation: presentationPlan
     });
   } catch (error) {
@@ -134,8 +148,11 @@ app.get("/api/download/:filename", (req, res) => {
 // n8n Webhook Target Endpoint
 app.post("/webhook/n8n-generate", async (req, res) => {
   try {
-    const { prompt, theme = "modern_dark", numSlides = 5 } = req.body;
-    const presentationPlan = await generatePresentationPlan(prompt || "n8n Workflow Deck", theme, numSlides);
+    const { prompt, theme = "modern_dark", numSlides = 5, mode, provider, apiKey, model } = req.body;
+    const headerApiKey = req.headers["x-api-key"] || req.headers["authorization"]?.replace("Bearer ", "");
+    const options = { mode, provider, apiKey: apiKey || headerApiKey, model };
+
+    const presentationPlan = await generatePresentationPlan(prompt || "n8n Workflow Deck", theme, numSlides, options);
     const { filename, filePath } = await buildPptxFile(presentationPlan, OUTPUT_DIR);
 
     const protocol = req.protocol || "http";
@@ -153,6 +170,12 @@ app.post("/webhook/n8n-generate", async (req, res) => {
       filename,
       downloadUrl,
       slideCount: presentationPlan.slideCount,
+      generatorMeta: {
+        modeUsed: presentationPlan.modeUsed,
+        provider: presentationPlan.provider,
+        fallbackUsed: presentationPlan.fallbackUsed,
+        fallbackReason: presentationPlan.fallbackReason || null
+      },
       binaryBase64: base64Data,
       presentation: presentationPlan
     });

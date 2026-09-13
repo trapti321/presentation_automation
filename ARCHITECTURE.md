@@ -39,10 +39,13 @@ The system comprises four decoupled, interoperable layers:
 * **Decision**: For fast execution, portability, and zero-setup developer experience, we implemented the core engine using Node.js + `pptxgenjs`.
 * **Rationale**: `pptxgenjs` generates genuine 16:9 Microsoft PowerPoint (`.pptx`) files directly in memory with exact layout shapes, text containers, stat boxes, and color themes—eliminating heavy database or headless browser dependencies while offering instant performance.
 
-### Trade-off 2: Rule-Based AI Planner with LLM Plug-in Capability
-* **Context**: LLM API calls can be subject to rate limits, API key costs, or latency spikes during evaluation.
-* **Decision**: We implemented an intelligent structured presentation planner that parses input prompts into 6 distinct slide layouts (`title_cover`, `stats_metrics`, `two_column_content`, `feature_grid`, `quote_callout`, `timeline_process`). It supports optional Gemini/OpenAI API keys for external inference, but operates 100% reliably out of the box without requiring external keys.
-* **Rationale**: Guarantees deterministic, high-quality, instant presentation generation without failing due to missing environment variables or API quota exhaustion.
+### Trade-off 2: Dual-Engine Generator (Local Static Rule Engine + Live AI LLM Inference with Graceful Fallback)
+* **Context**: External LLM API calls (Gemini/OpenAI) can be subject to missing API keys, rate limits, network timeouts, or quota errors during reviewer evaluation.
+* **Decision**: Implemented a configurable dual-engine architecture in `aiPlanner.js`:
+  - **Local Static Rule Engine (`mode: "static"`)**: Parses input prompts into 6 distinct slide layouts (`title_cover`, `stats_metrics`, `two_column_content`, `feature_grid`, `timeline_process`, `quote_callout`) using structured template heuristics. Operates 100% offline with zero external API dependencies.
+  - **Live AI Model Inference (`mode: "ai"`)**: Direct HTTP REST integration supporting Google Gemini (`gemini-1.5-flash`) and OpenAI (`gpt-4o-mini`) via API keys.
+  - **Automatic Fallback System**: If live AI generation fails, the system automatically falls back to local static mode with HTTP 200 and visual banner telemetry (`generatorMeta.fallbackUsed: true`), ensuring zero evaluation crashes.
+* **Rationale**: Guarantees deterministic, high-quality presentation generation out of the box while supporting full live LLM model testing for reviewers.
 
 ### Trade-off 3: Decoupled n8n Webhook Architecture
 * **Context**: Recreating slide generation in n8n can either be done entirely via Code nodes or via dedicated service calls.

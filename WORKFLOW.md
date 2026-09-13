@@ -162,21 +162,28 @@ When any channel requests a presentation, the core presentation engine (`backend
 
 ## 🧪 4. How to Verify All Workflows Locally
 
-Run all three workflow verifications:
+Run all workflow verifications:
 
-### Test 1: Core Engine HTTP API
+### Test 1: Core Engine HTTP API (Local Static Mode)
 ```bash
 curl -X POST http://localhost:5001/api/generate \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "AI in Healthcare", "theme": "modern_dark", "numSlides": 5}'
+  -d '{"prompt": "AI in Healthcare", "theme": "modern_dark", "numSlides": 5, "mode": "static"}'
 ```
 
-### Test 2: MCP Stdio JSON-RPC Execution
+### Test 2: Core Engine HTTP API (Live AI Mode with Gemini)
 ```bash
-cd mcp-server && node dist/index.js <<< '{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "generate_presentation", "arguments": {"prompt": "Cybersecurity", "theme": "vibrant_neon", "num_slides": 3}}}'
+curl -X POST http://localhost:5001/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "AI in Healthcare", "theme": "modern_dark", "numSlides": 5, "mode": "ai", "provider": "gemini", "apiKey": "YOUR_GEMINI_API_KEY"}'
 ```
 
-### Test 3: n8n Webhook Binary Payload
+### Test 3: MCP Stdio JSON-RPC Execution
+```bash
+cd mcp-server && node dist/index.js <<< '{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "generate_presentation", "arguments": {"prompt": "Cybersecurity", "theme": "vibrant_neon", "num_slides": 3, "mode": "static"}}}'
+```
+
+### Test 4: n8n Webhook Binary Payload Delivery
 ```bash
 curl -X POST http://localhost:5001/webhook/n8n-generate \
   -H "Content-Type: application/json" \

@@ -1,9 +1,15 @@
 /**
  * AI Presentation Planner & Content Generator
- * Generates rich, structured slide objects based on prompt input.
+ * Supports dual-engine mode:
+ * 1. Local Static Rule Engine (Fast, offline, zero-dependency)
+ * 2. Live AI Model Generation (Google Gemini & OpenAI REST API)
+ * Includes robust automatic fallback to local static mode if AI inference fails.
  */
 
-async function generatePresentationPlan(prompt, themeId = "modern_dark", numSlides = 5) {
+/**
+ * Generate presentation plan locally using template rule engine.
+ */
+function generateLocalStaticPlan(prompt, themeId = "modern_dark", numSlides = 5) {
   const cleanPrompt = (prompt || "Presentation Overview").trim();
   const slideCount = Math.min(Math.max(parseInt(numSlides) || 5, 3), 10);
   
@@ -150,6 +156,215 @@ async function generatePresentationPlan(prompt, themeId = "modern_dark", numSlid
   };
 }
 
+/**
+ * System prompt instructions for AI LLM model generation.
+ */
+function getSystemPrompt(slideCount) {
+  return `You are an expert presentation content designer. Create a structured presentation deck JSON based on the user's topic.
+Generate EXACTLY ${slideCount} slides.
+
+Use ONLY these layout types for the slides array:
+1. "title_cover": { "slideIndex": 1, "layout": "title_cover", "title": "...", "subtitle": "...", "presenter": "...", "date": "...", "accentBadge": "..." }
+2. "stats_metrics": { "slideIndex": 2, "layout": "stats_metrics", "title": "...", "subtitle": "...", "metrics": [ { "stat": "...", "label": "...", "subtext": "..." }, ... ] } (3-4 metrics)
+3. "two_column_content": { "slideIndex": 3, "layout": "two_column_content", "title": "...", "subtitle": "...", "leftHeading": "...", "leftItems": ["...", "..."], "rightHeading": "...", "rightItems": ["...", "..."] }
+4. "feature_grid": { "slideIndex": 4, "layout": "feature_grid", "title": "...", "subtitle": "...", "features": [ { "title": "...", "description": "..." }, ... ] } (4 features)
+5. "timeline_process": { "slideIndex": 5, "layout": "timeline_process", "title": "...", "subtitle": "...", "steps": [ { "step": "Phase 1", "title": "...", "description": "..." }, ... ] } (3-4 steps)
+6. "quote_callout": { "slideIndex": 6, "layout": "quote_callout", "title": "...", "subtitle": "...", "quote": "...", "author": "...", "role": "..." }
+
+Return strictly valid JSON with this top-level schema:
+{
+  "presentationTitle": "...",
+  "summary": "...",
+  "slides": [ ... ]
+}`;
+}
+
+/**
+ * Generate plan live via Google Gemini REST API
+ */
+async function generateGeminiPlan(prompt, themeId, slideCount, apiKey, model) {
+  const modelsToTry = model 
+    ? [model, "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp", "gemini-pro"]
+    : ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp", "gemini-pro", "gemini-1.0-pro"];
+
+  let lastError;
+  for (const mod of modelsToTry) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${apiKey}`;
+    const systemInstruction = getSystemPrompt(slideCount);
+    const fullPrompt = `${systemInstruction}\n\nUser Topic: "${prompt}"\n\nGenerate the JSON output now.`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: fullPrompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.7
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        // If 404 (model not found), try next model name in candidate list
+        if (response.status === 404) {
+          lastError = new Error(`Gemini API HTTP 404 for '${mod}': ${errorText}`);
+          continue;
+        }
+        throw new Error(`Gemini API HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error("Gemini returned empty text candidate response.");
+      }
+
+      const parsed = JSON.parse(text);
+      if (!parsed.slides || !Array.isArray(parsed.slides) || parsed.slides.length === 0) {
+        throw new Error("Gemini output JSON missing valid slides array.");
+      }
+
+      return parsed;
+    } catch (err) {
+      lastError = err;
+      if (err.message.includes("404")) continue;
+      throw err;
+    }
+  }
+
+  throw lastError || new Error("All Gemini model aliases failed.");
+}
+
+/**
+ * Generate plan live via OpenAI Chat Completions REST API
+ */
+async function generateOpenAIPlan(prompt, themeId, slideCount, apiKey, model = "gpt-4o-mini") {
+  const endpoint = "https://api.openai.com/v1/chat/completions";
+  const systemInstruction = getSystemPrompt(slideCount);
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: systemInstruction },
+        { role: "user", content: `Create a presentation deck on topic: "${prompt}"` }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.7
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI API HTTP ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  const text = data.choices?.[0]?.message?.content;
+  if (!text) {
+    throw new Error("OpenAI returned empty message content.");
+  }
+
+  const parsed = JSON.parse(text);
+  if (!parsed.slides || !Array.isArray(parsed.slides) || parsed.slides.length === 0) {
+    throw new Error("OpenAI output JSON missing valid slides array.");
+  }
+
+  return parsed;
+}
+
+/**
+ * Unified Main Entrypoint for Presentation Generation
+ *
+ * @param {string} prompt User prompt instruction
+ * @param {string} themeId Theme ID
+ * @param {number} numSlides Desired slide count
+ * @param {object} options Options object containing { mode, provider, apiKey, model }
+ */
+async function generatePresentationPlan(prompt, themeId = "modern_dark", numSlides = 5, options = {}) {
+  const cleanPrompt = (prompt || "Presentation Overview").trim();
+  const slideCount = Math.min(Math.max(parseInt(numSlides) || 5, 3), 10);
+
+  // 1. Resolve Provider & Key Configuration
+  const reqApiKey = options.apiKey || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || "";
+  const reqMode = (options.mode || process.env.LLM_MODE || "auto").toLowerCase();
+  
+  let reqProvider = (options.provider || process.env.LLM_PROVIDER || "").toLowerCase();
+  
+  // Smart key-based auto-detection
+  if (reqApiKey.startsWith("sk-")) {
+    reqProvider = "openai";
+  } else if (reqApiKey.startsWith("AIza")) {
+    reqProvider = "gemini";
+  } else if (!reqProvider || reqProvider === "auto") {
+    reqProvider = process.env.OPENAI_API_KEY ? "openai" : "gemini";
+  }
+
+  // 2. Explicit Local Static Mode Requested OR No Key Available
+  if (reqMode === "static" || reqProvider === "local" || !reqApiKey) {
+    console.log(`[AI Planner] Running in LOCAL STATIC mode (Provider: local, Key present: ${Boolean(reqApiKey)})`);
+    const staticPlan = generateLocalStaticPlan(cleanPrompt, themeId, slideCount);
+    return {
+      ...staticPlan,
+      modeUsed: "static",
+      provider: "local",
+      fallbackUsed: false
+    };
+  }
+
+  // 3. AI Mode Execution Attempt
+  console.log(`[AI Planner] Attempting LIVE AI generation via Provider: '${reqProvider}'`);
+  try {
+    let aiPlan;
+    if (reqProvider === "openai") {
+      const model = options.model || process.env.OPENAI_MODEL || "gpt-4o-mini";
+      aiPlan = await generateOpenAIPlan(cleanPrompt, themeId, slideCount, reqApiKey, model);
+    } else {
+      const model = options.model || process.env.GEMINI_MODEL || "gemini-1.5-flash";
+      aiPlan = await generateGeminiPlan(cleanPrompt, themeId, slideCount, reqApiKey, model);
+    }
+
+    // Ensure slides array format & indexes
+    const normalizedSlides = aiPlan.slides.map((s, idx) => ({
+      ...s,
+      slideIndex: idx + 1,
+      layout: s.layout || "two_column_content"
+    }));
+
+    return {
+      presentationTitle: aiPlan.presentationTitle || cleanPrompt,
+      summary: aiPlan.summary || `AI Generated presentation on "${cleanPrompt}".`,
+      themeId,
+      slideCount: normalizedSlides.length,
+      slides: normalizedSlides,
+      modeUsed: "ai",
+      provider: reqProvider,
+      fallbackUsed: false
+    };
+  } catch (error) {
+    console.warn(`[AI Planner Fallback Warning] Live AI generation failed: ${error.message}. Falling back to Local Static Engine.`);
+    
+    // Graceful Fallback to Local Static Plan
+    const fallbackPlan = generateLocalStaticPlan(cleanPrompt, themeId, slideCount);
+    return {
+      ...fallbackPlan,
+      modeUsed: "static",
+      provider: reqProvider,
+      fallbackUsed: true,
+      fallbackReason: error.message
+    };
+  }
+}
+
 module.exports = {
-  generatePresentationPlan
+  generatePresentationPlan,
+  generateLocalStaticPlan
 };

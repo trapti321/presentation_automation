@@ -16,10 +16,9 @@ cd "$ROOT_DIR/mcp-server"
 npm install --quiet
 npm run build --quiet
 
-echo "3. Starting Presentation Engine & Web Frontend on http://localhost:5001 ..."
-# Clear any existing process listening on port 5001
-lsof -ti:5001 | xargs kill -9 2>/dev/null || true
+echo "3. Freeing port 5001 if in use..."
+lsof -ti :5001 | xargs kill -9 2>/dev/null || true
 
+echo "4. Starting Presentation Engine & Web Frontend on http://localhost:5001 ..."
 cd "$ROOT_DIR/backend"
 npm start
-

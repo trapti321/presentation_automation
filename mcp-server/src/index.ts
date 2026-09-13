@@ -27,7 +27,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "generate_presentation",
         description:
-          "Generates a complete 16:9 widescreen PowerPoint presentation deck (.pptx) based on user prompt instructions, topic, theme, and desired slide count.",
+          "Generates a complete 16:9 widescreen PowerPoint presentation deck (.pptx) based on user prompt instructions, topic, theme, desired slide count, and optional AI model or local static data source.",
         inputSchema: {
           type: "object",
           properties: {
@@ -45,6 +45,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "number",
               description: "Number of slides to generate (3 to 10, default: 5).",
               default: 5,
+            },
+            mode: {
+              type: "string",
+              enum: ["auto", "static", "ai"],
+              description: "Generation engine mode ('static' for fast offline rule engine, 'ai' for live LLM inference).",
+              default: "auto",
+            },
+            provider: {
+              type: "string",
+              enum: ["local", "gemini", "openai"],
+              description: "AI Provider or local data source ('local', 'gemini', or 'openai').",
+            },
+            apiKey: {
+              type: "string",
+              description: "Optional API Key for Gemini or OpenAI live inference.",
             },
           },
           required: ["prompt"],
@@ -130,16 +145,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const prompt = String(args?.prompt || "Presentation Overview");
       const theme = String(args?.theme || "modern_dark");
       const numSlides = Number(args?.num_slides || 5);
+      const mode = args?.mode ? String(args.mode) : undefined;
+      const provider = args?.provider ? String(args.provider) : undefined;
+      const apiKey = args?.apiKey ? String(args.apiKey) : undefined;
 
       const result = await httpPost(`${BACKEND_API_BASE}/api/generate`, {
         prompt,
         theme,
         numSlides,
+        mode,
+        provider,
+        apiKey,
       });
 
       if (!result.success) {
         throw new Error(result.error || "Generation failed.");
       }
+
+      const metaStr = result.generatorMeta
+        ? `⚙️ Engine Mode: ${result.generatorMeta.modeUsed} (Provider: ${result.generatorMeta.provider}${result.generatorMeta.fallbackUsed ? ` [Fallback: ${result.generatorMeta.fallbackReason}]` : ""})\n`
+        : "";
 
       const slidesSummary = (result.presentation?.slides || [])
         .map((s: any, idx: number) => `Slide ${idx + 1} (${s.layout}): ${s.title}`)
@@ -153,6 +178,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   `📁 Filename: ${result.filename}\n` +
                   `📊 Slide Count: ${result.slideCount}\n` +
                   `🎨 Theme: ${result.theme?.name} (${result.theme?.id})\n` +
+                  `${metaStr}` +
                   `🔗 Download URL: ${result.downloadUrl}\n\n` +
                   `📋 Slide Deck Outline:\n${slidesSummary}\n\n` +
                   `JSON Payload:\n${JSON.stringify(result, null, 2)}`,

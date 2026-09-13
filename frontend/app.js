@@ -14,6 +14,12 @@ const THEME_PALETTES = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Load saved API key from localStorage if available
+  const savedKey = localStorage.getItem("presenton_api_key");
+  if (savedKey) {
+    document.getElementById("apiKeyInput").value = savedKey;
+  }
+
   // Set initial default presentation
   setPreset("AI in Modern Healthcare - Diagnostics & Patient Care");
   generatePresentation();
@@ -33,6 +39,32 @@ function setEngineMode(mode) {
   document.getElementById("modeN8n").classList.toggle("active", mode === "n8n");
 }
 
+function onProviderChange() {
+  const provider = document.getElementById("providerSelect").value;
+  const apiKeyRow = document.getElementById("apiKeyRow");
+  if (provider === "gemini" || provider === "openai") {
+    apiKeyRow.style.display = "flex";
+  } else {
+    apiKeyRow.style.display = "none";
+  }
+}
+
+function onApiKeyInput(val) {
+  localStorage.setItem("presenton_api_key", val.trim());
+}
+
+function toggleApiKeyVisibility() {
+  const input = document.getElementById("apiKeyInput");
+  const btn = document.getElementById("btnToggleKey");
+  if (input.type === "password") {
+    input.type = "text";
+    btn.innerText = "🔒";
+  } else {
+    input.type = "password";
+    btn.innerText = "👁️";
+  }
+}
+
 function onThemeChange() {
   if (currentPresentation) {
     currentPresentation.presentation.themeId = document.getElementById("themeSelect").value;
@@ -44,6 +76,9 @@ async function generatePresentation() {
   const prompt = document.getElementById("promptInput").value.trim() || "Presentation Overview";
   const theme = document.getElementById("themeSelect").value;
   const numSlides = document.getElementById("slidesRange").value;
+  const provider = document.getElementById("providerSelect").value;
+  const apiKey = document.getElementById("apiKeyInput").value.trim();
+  const mode = provider === "local" ? "static" : "ai";
 
   showLoading(true);
 
@@ -55,7 +90,7 @@ async function generatePresentation() {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, theme, numSlides })
+      body: JSON.stringify({ prompt, theme, numSlides, mode, provider, apiKey })
     });
 
     if (!response.ok) {
@@ -68,6 +103,24 @@ async function generatePresentation() {
 
     renderSidebarThumbs();
     renderCurrentSlide();
+
+    // Update Status Badge
+    const badge = document.getElementById("engineMetaBadge");
+    if (data.generatorMeta) {
+      if (data.generatorMeta.fallbackUsed) {
+        badge.innerText = "⚠️ Fallback Engine (Static)";
+        badge.className = "meta-badge fallback";
+        badge.title = `AI Failed: ${data.generatorMeta.fallbackReason || "Unknown"}`;
+      } else if (data.generatorMeta.modeUsed === "ai") {
+        badge.innerText = `🤖 Live AI (${data.generatorMeta.provider === "openai" ? "OpenAI" : "Gemini"})`;
+        badge.className = "meta-badge ai";
+        badge.title = "Generated live via LLM API";
+      } else {
+        badge.innerText = "⚡ Local Engine";
+        badge.className = "meta-badge";
+        badge.title = "Generated via Local Rule Engine";
+      }
+    }
 
     // Enable download button
     document.getElementById("btnDownload").disabled = false;
@@ -255,14 +308,26 @@ function showJsonModal() {
 function showMcpModal() {
   const prompt = document.getElementById("promptInput").value.trim();
   const theme = document.getElementById("themeSelect").value;
-  const mcpCmd = `{
-  "tool": "generate_presentation",
-  "arguments": {
-    "prompt": "${prompt}",
-    "theme": "${theme}",
-    "num_slides": ${document.getElementById("slidesRange").value}
+  const provider = document.getElementById("providerSelect").value;
+  const apiKey = document.getElementById("apiKeyInput").value.trim();
+  const mode = provider === "local" ? "static" : "ai";
+
+  const argsObj = {
+    prompt,
+    theme,
+    num_slides: Number(document.getElementById("slidesRange").value),
+    mode,
+    provider
+  };
+  if (apiKey) {
+    argsObj.apiKey = apiKey;
   }
-}`;
+
+  const mcpCmd = JSON.stringify({
+    tool: "generate_presentation",
+    arguments: argsObj
+  }, null, 2);
+
   document.getElementById("modalTitle").innerText = "MCP Tool Execution JSON";
   document.getElementById("modalCode").innerText = mcpCmd;
   document.getElementById("modalBackdrop").classList.add("active");
